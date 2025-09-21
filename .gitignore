@@ -1,0 +1,8 @@
+# Ignore the log files
+*.log
+
+# Ignore the secrets file
+config/secrets.env
+
+# Ignore compiled Python files
+__pycache__/
