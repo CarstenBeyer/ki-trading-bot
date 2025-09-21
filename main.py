@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # in deiner bestehenden Datei (unten im __main__)
-from strategies import sma_signal
+from strategies import sma_signal, donchian_breakout_signal, rsi_meanrev_signal
 from backtest import run_backtest
 from bitget_loader import fetch_ohlcv
 from plotting import plot_price_equity_dual_axis
@@ -9,11 +9,13 @@ from trades import build_trade_report
 
 if __name__ == "__main__":
     # Daten holen
-    df = fetch_ohlcv("ETH/USDT", "6h", 1000)  # nimm gern "1h" o. ä.
+    df = fetch_ohlcv("ETH/USDT", "12h", 1000)  # nimm gern "1h" o. ä.
     print(df)
 
     # Strategie-Signal
-    sig = sma_signal(df, fast=20, slow=50)
+    #sig = sma_signal(df, fast=20, slow=50)
+    #sig = donchian_breakout_signal(df, entry_n=20, exit_n=10)
+    sig = rsi_meanrev_signal(df, n=14, buy_thr=30, exit_thr=50)
 
     # Backtest
     equity, rets, stats = run_backtest(df, sig, fee_pct=0.1, slippage_bps=5)
