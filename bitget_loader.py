@@ -1,12 +1,14 @@
 import ccxt
 import pandas as pd
+import os
 from typing import Literal, Optional
+from dotenv import load_dotenv
 
 Timeframe = Literal["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w","1M"]
+# Lade deine Secrets aus config/secrets.env
+load_dotenv(dotenv_path="config/secrets.env")
 
-def get_exchange(api_key: str | None = None,
-                 api_secret: str | None = None,
-                 passphrase: str | None = None) -> ccxt.bitget:
+def get_exchange() -> ccxt.bitget:
     """
     Erstellt einen Bitget-Client. Ohne Keys -> nur öffentliche Daten (OHLCV, Ticker).
     Mit Keys -> später Orders möglich.
@@ -14,8 +16,19 @@ def get_exchange(api_key: str | None = None,
     cfg = {
         "enableRateLimit": True,
     }
-    if api_key and api_secret and passphrase:
-        cfg.update({"apiKey": api_key, "secret": api_secret, "password": passphrase})
+    
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    api_passphrase = os.getenv("API_PASSPHRASE")
+    
+    print("Using Bitget exchange with API key:", api_key is not None)
+    
+    if api_key and api_secret and api_passphrase:
+        cfg.update({
+            "apiKey": api_key,
+            "secret": api_secret,
+            "password": api_passphrase
+        })
     ex = ccxt.bitget(cfg)
     ex.load_markets()
     return ex

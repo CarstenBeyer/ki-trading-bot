@@ -4,9 +4,13 @@
 from strategies import sma_signal
 from backtest import run_backtest
 from bitget_loader import fetch_ohlcv
+from plotting import plot_equity_with_trades
+from trades import build_trade_report
+
 if __name__ == "__main__":
     # Daten holen
-    df = fetch_ohlcv("ETH/USDT", "1d", 1000)  # nimm gern "1h" o. ä.
+    df = fetch_ohlcv("ETH/USDT", "6h", 1000)  # nimm gern "1h" o. ä.
+    print(df)
 
     # Strategie-Signal
     sig = sma_signal(df, fast=20, slow=50)
@@ -14,13 +18,14 @@ if __name__ == "__main__":
     # Backtest
     equity, rets, stats = run_backtest(df, sig, fee_pct=0.1, slippage_bps=5)
 
+    # ... nachdem du equity, sig und df berechnet hast:
+    report = build_trade_report(df, sig, equity)
+    print("\n=== Trade Report (gekürzt) ===")
+    print(report.round(4).head(10))   # oder .tail(), oder komplett ausgeben
+
+
     print("\n=== Stats ===")
     print(stats.round(4))
 
-    # (Optional) Equity plotten – schlicht mit matplotlib
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(10,4))
-    plt.plot(equity.index, equity.values)
-    plt.title("Equity Curve — SMA(20/50) ETH/USDT")
-    plt.xlabel("Zeit (UTC)"); plt.ylabel("Equity (Start=1.0)")
-    plt.tight_layout(); plt.show()
+    # Plotten
+    plot_equity_with_trades(equity, sig, title="Equity — SMA(20/50) ETH/USDT 6h")
