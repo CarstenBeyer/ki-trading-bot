@@ -9,8 +9,8 @@ from trades import build_trade_report
 
 if __name__ == "__main__":
     # Daten holen
-    symbol = "XRP/USDT"
-    timeframe = "6h"
+    symbol = "SOL/USDT"
+    timeframe = "4h"
     limit = 1000
 
     df = fetch_ohlcv(symbol, timeframe, limit)
@@ -30,13 +30,15 @@ if __name__ == "__main__":
         vol_target_ann=0.12, max_exposure=1.0
     )
 
+    sig = sma_signal(df, fast=15, slow=40)
+
     # Backtest
     equity, rets, stats = run_backtest(df, sig, fee_pct=0.1, slippage_bps=5)
 
     # ... nachdem du equity, sig und df berechnet hast:
-    report = build_trade_report(df, sig, equity)
+    report = build_trade_report(df, sig, equity, enter_level=0.20, exit_level=0.1)
     print("\n=== Trade Report (gekürzt) ===")
-    print(report.round(4).head(10))   # oder .tail(), oder komplett ausgeben
+    print(report.round(4).tail(10))   # oder .tail(), oder komplett ausgeben
 
 
     print("\n=== Stats ===")
