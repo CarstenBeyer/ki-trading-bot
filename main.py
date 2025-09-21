@@ -4,7 +4,7 @@
 from strategies import sma_signal
 from backtest import run_backtest
 from bitget_loader import fetch_ohlcv
-from plotting import plot_equity_with_trades
+from plotting import plot_price_equity_dual_axis
 from trades import build_trade_report
 
 if __name__ == "__main__":
@@ -28,4 +28,7 @@ if __name__ == "__main__":
     print(stats.round(4))
 
     # Plotten
-    plot_equity_with_trades(equity, sig, title="Equity — SMA(20/50) ETH/USDT 6h")
+    plot_price_equity_dual_axis(df, equity, sig, title="ETH/USDT 6h — SMA(20/50) Dual Axis")
+    
+    
+    

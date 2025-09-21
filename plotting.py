@@ -1,24 +1,54 @@
+# plotting.py
 import matplotlib.pyplot as plt
 import pandas as pd
+from trades import build_trade_report
 
-def _trade_marks_from_signal(sig: pd.Series):
-    sig_exec = sig.shift(1).fillna(0).astype(int)
-    turns = sig_exec.diff().fillna(sig_exec.iloc[0])
-    entries = turns[turns > 0].index
-    exits   = turns[turns < 0].index
-    return entries, exits
+def plot_price_equity_dual_axis(
+    df: pd.DataFrame,   # braucht Spalten: close, optional ohlc
+    equity: pd.Series,  # Equity-Kurve
+    sig: pd.Series,     # unverschobenes Signal {0,1}
+    title: str = "Price & Equity (Dual Axis)",
+    savefig: str | None = None,
+) -> None:
+    """
+    Plot mit zwei Y-Achsen:
+    - links: Preis (Close)
+    - rechts: Equity
+    - Marker (▲/▼) für Entry/Exit auf beiden Kurven
+    """
+    # Trade-Report für Marker
+    report = build_trade_report(df, sig, equity)
+    entries = report["entry_time"]
+    exits   = report["exit_time"]
 
-def plot_equity_with_trades(equity: pd.Series, sig: pd.Series, title: str = "Equity Curve with Trades"):
-    entries, exits = _trade_marks_from_signal(sig)
-    plt.figure(figsize=(10, 4))
-    plt.plot(equity.index, equity.values, label="Equity (start=1.0)")
+    fig, ax1 = plt.subplots(figsize=(12,6))
+
+    # Preis (linke Achse)
+    ax1.set_xlabel("Zeit (UTC)")
+    ax1.set_ylabel("Preis", color="tab:blue")
+    ax1.plot(df.index, df["close"], color="tab:blue", label="Preis (Close)")
     if len(entries):
-        plt.scatter(entries, equity.loc[entries], marker="^", s=80, label="Entry")
+        ax1.scatter(entries, df.loc[entries, "close"], marker="^", color="green", s=80, label="Entry")
     if len(exits):
-        plt.scatter(exits, equity.loc[exits], marker="v", s=80, label="Exit")
+        ax1.scatter(exits, df.loc[exits, "close"], marker="v", color="red", s=80, label="Exit")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+    # Equity (rechte Achse)
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Equity", color="tab:orange")
+    ax2.plot(equity.index, equity.values, color="tab:orange", label="Equity")
+    if len(entries):
+        ax2.scatter(entries, equity.loc[entries], marker="^", color="green", s=60)
+    if len(exits):
+        ax2.scatter(exits, equity.loc[exits], marker="v", color="red", s=60)
+    ax2.tick_params(axis="y", labelcolor="tab:orange")
+
+    # Titel & Legende
     plt.title(title)
-    plt.xlabel("Zeit (UTC)")
-    plt.ylabel("Equity")
-    plt.legend()
-    plt.tight_layout()
+    fig.tight_layout()
+    ax1.legend(loc="upper left")
+    ax2.legend(loc="upper right")
+
+    if savefig is not None:
+        plt.savefig(savefig, dpi=150)
     plt.show()
