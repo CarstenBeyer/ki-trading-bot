@@ -28,7 +28,10 @@ if __name__ == "__main__":
     print(stats.round(4))
 
     # Plotten
-    plot_price_equity_dual_axis(df, equity, sig, title="ETH/USDT 6h — SMA(20/50) Dual Axis")
-    
-    
+    plot_price_equity_dual_axis(
+        df, equity, sig,
+        stats=stats,  # <<<< hier Stats übergeben
+        title="ETH/USDT 6h — SMA(20/50) mit Stats"
+    )    
+        
     
