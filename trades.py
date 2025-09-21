@@ -92,6 +92,14 @@ def build_trade_report(
             "runup_pct": runup_pct,
             "drawdown_pct": drawdown_pct,
         })
+        
+    if not rows:   # <<<< keine Trades gefunden
+        return pd.DataFrame(columns=[
+            "entry_time","entry_price",
+            "exit_time","exit_price",
+            "pnl_abs","pnl_pct","bars_held"
+        ])
 
+    
     report = pd.DataFrame(rows).sort_values("entry_time").reset_index(drop=True)
     return report

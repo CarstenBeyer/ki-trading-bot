@@ -26,7 +26,7 @@ def plot_price_equity_dual_axis(
     equity = equity.sort_index()
     equity_aligned = equity.reindex(df.index).ffill()
 
-    fig, ax1 = plt.subplots(figsize=(12, 6))
+    fig, ax1 = plt.subplots(figsize=(32, 12))
     ax2 = ax1.twinx()
 
     # --- Preis
