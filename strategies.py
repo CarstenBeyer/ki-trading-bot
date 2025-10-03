@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from typing import Literal
 
-# ---------- Helpers (konsolidiert) ----------
+# ---------- Helpers ----------
 
 def bars_per_year_from_index(idx: pd.Index, fallback: int = 1460) -> int:
     """
@@ -17,13 +18,11 @@ def bars_per_year_from_index(idx: pd.Index, fallback: int = 1460) -> int:
     if freq is None:
         return fallback
 
-    # Map gängiger Frequenzen
     mapping = {
         "T": 525600, "5T": 105120, "15T": 35040, "30T": 17520,
         "H": 8760, "2H": 4380, "4H": 2190, "6H": 1460, "8H": 1095, "12H": 730,
         "D": 365, "2D": 182, "W-SUN": 52, "W-MON": 52
     }
-    # Pandas gibt bei X-Minuten/H Stunden meist "5T", "6H" usw. zurück
     return mapping.get(freq, fallback)
 
 def rsi_ewm(close: pd.Series, n: int = 14) -> pd.Series:
@@ -41,7 +40,7 @@ def rsi_ewm(close: pd.Series, n: int = 14) -> pd.Series:
 def atr_wilder(df: pd.DataFrame, n: int = 14) -> pd.Series:
     h, l, c = df["high"], df["low"], df["close"]
     tr = pd.concat([(h - l), (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    out = tr.ewm(alpha=1/n, adjust=False).mean()  # Wilder-Glättung
+    out = tr.ewm(alpha=1/n, adjust=False).mean()
     out.name = f"atr_{n}"
     return out
 
@@ -55,7 +54,7 @@ def ewma_vol(logret: pd.Series, lam: float = 0.94) -> pd.Series:
     var = (logret**2).ewm(alpha=1-lam, adjust=False).mean()
     return np.sqrt(var)
 
-# ---------- Einfache Signale (deins, leicht gestrafft) ----------
+# ---------- Einfache Signale ----------
 
 def sma_signal(df: pd.DataFrame, fast: int = 20, slow: int = 50) -> pd.Series:
     assert 0 < fast < slow
@@ -96,51 +95,62 @@ def rsi_meanrev_signal(df: pd.DataFrame, n: int = 14, buy_thr: float = 30, exit_
     sig = pd.Series(out, index=df.index, name="rsi_meanrev_long").astype(int)
     return sig
 
-# ---------- Regime-adaptiv (verbessert, optional mit Shorts) ----------
+# ---------- Regime-adaptiv (verbessert) ----------
 
 @dataclass
 class RegimeAdaptiveHybrid:
     """
-    Regime-adaptive Trend/Range-Strategie (long-only, binärer Output 0/1).
+    Regime-adaptive Trend/Range-Strategie (long-only, binär 0/1).
 
-    Idee:
-      - Regime-Erkennung (Trend vs. Range) über SMA200-ZScore & Preis-Slope (mit Hysterese)
-      - Trend-Regime: Donchian-Breakout + ATR-basierter Trailing-Stop
-      - Range-Regime: RSI + Bollinger-Mean-Reversion (nur long)
-      - Output: 0 (flat) oder 1 (long)
-      - Kein Short, kein Vol-Targeting (bewusst deaktiviert)
+    Regime-Erkennung (Trend vs. Range):
+      - Slope (normiert) & Z-Score von Close vs. SMA(trend_win)
+      - Volatilitäts-Gate (annualisierte realisierte Vol)
 
-    Erwartet DataFrame mit Spalten: 'open','high','low','close' und DatetimeIndex.
-    Nutze das Ergebnis im Backtest mit .shift(1), um Look-ahead zu vermeiden.
+    Trend-Block (nur wenn is_trend=True):
+      - Donchian-Breakout (upper-Band) mit optionalem Breakout-Puffer
+      - Exit: max(Donchian-Low [optional gepaddet], Entry-ATR, Chandelier-ATR)
+
+    Range-Block (nur wenn is_trend=False):
+      - Mean-Reversion mit RSI + Bollinger-ZScore (Entry z<=-1, Exit z>=0)
+      - Optional: Guards, damit BB+RSI nicht gegen „zu schlechten“ Trend kauft
     """
 
     # -------- Regime-Parameter --------
-    trend_win: int = 200             # Fenster für SMA/ZScore/Slope
-    slope_enter: float = 0.0         # Trend-Enter-Schwelle
-    slope_exit: float  = -0.0005     # Trend-Exit-Schwelle (Hysterese)
-    z_enter: float = 0.0             # Enter-Schwelle für ZScore (close vs. SMA)
-    z_exit: float  = -0.25           # Exit-Schwelle (Hysterese)
-    vol_win: int = 30                # Fenster für realisierte Vol
-    max_ann_vol: float = 1.0         # 100% p.a. – darüber kein Trend-Regime
+    trend_win: int = 200
+    slope_enter: float = 0.0
+    slope_exit: float  = -0.0005
+    z_enter: float = 0.0
+    z_exit: float  = -0.25
+    vol_win: int = 30
+    max_ann_vol: float = 1.0
 
-    # -------- Trend-Block (Breakout) --------
-    don_entry: int = 20              # Donchian-High Fenster für Entry
-    don_exit: int  = 10              # Donchian-Low Fenster für Exit/Stop
-    atr_n: int = 14                  # ATR Fenster (Wilder)
-    atr_mult: float = 3.0            # Trailing-Stop Multiplikator
+    # -------- Trend-Block (Donchian) --------
+    don_entry: int = 20
+    don_exit: int  = 10
+    don_src: Literal["hl", "close"] = "hl"   # "hl" = High/Low (klassisch), "close" = Close-Kanal
+    don_break_pad: float = 0.0               # Breakout-Puffer (z.B. 0.0005 = 5 Bps über Upper)
+    don_exit_pad: float = 0.0                # Exit-Puffer: ll*(1+pad) -> strengerer Exit
 
-    # -------- Range-Block (Mean-Reversion long-only) --------
+    atr_n: int = 14
+    atr_mult: float = 3.0
+
+    # -------- Range-Block (RSI + Bollinger) --------
     rsi_n: int = 14
     rsi_buy: float = 30.0
     rsi_exit: float = 55.0
-    bb_win: int = 20                 # Bollinger Fenster
-    bb_k: float = 2.0                # (nur für z-Berechnung; k steuert z-Schwellen implizit)
-    time_exit: int = 100             # Bars bis Time-Exit im Range-Regime
+    bb_win: int = 20
+    bb_k: float = 2.0
+    time_exit: int = 100
 
-    # ---- feste Entscheidungen für diese Variante ----
-    allow_shorts: bool = False       # NICHT benutzt (immer False)
-    binary_output: bool = True       # immer 0/1
-    use_vol_targeting: bool = False  # kein Vol-Targeting
+    # -------- Zusätzliche Guards für Range-Einstieg --------
+    range_guard_slope_min: float | None = None      # z.B. 0.0 => nur wenn slope >= 0
+    range_guard_z_min: float | None = None          # z.B. -0.2 => nur wenn z >= -0.2
+    range_guard_max_ann_vol: float | None = None    # z.B. 1.2 => blocke bei zu hoher Vol
+
+    # ---- feste Entscheidungen ----
+    allow_shorts: bool = False
+    binary_output: bool = True
+    use_vol_targeting: bool = False  # (absichtlich inaktiv in dieser Variante)
 
     # ========= öffentliche API =========
     def generate(self, df: pd.DataFrame) -> pd.Series:
@@ -148,25 +158,40 @@ class RegimeAdaptiveHybrid:
         close = df["close"]
 
         # ----- Regime-Features -----
-        sma = close.rolling(self.trend_win, min_periods=self.trend_win).mean()
-        std = close.rolling(self.trend_win, min_periods=self.trend_win).std()
-        z = (close - sma) / (std + 1e-12)
+        sma_tr = close.rolling(self.trend_win, min_periods=self.trend_win).mean()
+        std_tr = close.rolling(self.trend_win, min_periods=self.trend_win).std()
+        z_tr = (close - sma_tr) / (std_tr + 1e-12)
         slope = self._slope_norm(close, win=self.trend_win)
         ann_vol = self._realized_vol(close, win=self.vol_win)
 
-        # Regime (Hysterese)
-        is_trend_enter = (slope > self.slope_enter) & (z > self.z_enter) & (ann_vol <= self.max_ann_vol)
-        is_trend_exit  = (slope < self.slope_exit) |  (z < self.z_exit)  | (ann_vol >  self.max_ann_vol)
+        # Trend-Regime via Hysterese
+        is_trend_enter = (slope > self.slope_enter) & (z_tr > self.z_enter) & (ann_vol <= self.max_ann_vol)
+        is_trend_exit  = (slope < self.slope_exit) |  (z_tr < self.z_exit)  | (ann_vol >  self.max_ann_vol)
         is_trend = self._hysteresis_bool(is_trend_enter, is_trend_exit, index=df.index)
         is_range = ~is_trend
 
-        # ----- Trend-Block (Donchian + ATR Stop, long-only) -----
-        hh, ll = self._donchian_bounds(close, self.don_entry, self.don_exit)
+        # Range-Guards (optional)
+        range_guard = pd.Series(True, index=df.index)
+        if self.range_guard_slope_min is not None:
+            range_guard &= (slope >= self.range_guard_slope_min)
+        if self.range_guard_z_min is not None:
+            range_guard &= (z_tr  >= self.range_guard_z_min)
+        if self.range_guard_max_ann_vol is not None:
+            range_guard &= (ann_vol <= self.range_guard_max_ann_vol)
+
+        # ----- Donchian-Bänder (für Trend-Block & Warmup) -----
+        if self.don_src == "hl":
+            hh = df["high"].shift(1).rolling(self.don_entry, min_periods=self.don_entry).max()
+            ll = df["low"] .shift(1).rolling(self.don_exit,  min_periods=self.don_exit ).min()
+        else:  # "close"
+            hh = close.shift(1).rolling(self.don_entry, min_periods=self.don_entry).max()
+            ll = close.shift(1).rolling(self.don_exit,  min_periods=self.don_exit ).min()
+
+        # ----- ATR (Wilder) -----
         atr = self._atr_wilder(df, self.atr_n)
 
-        long_break = (close > hh) & (~hh.isna())
-
-        pos_trend = np.zeros(len(df), dtype=int)  # 0/1
+        # ----- Trend-Block (Breakout + Stops) -----
+        pos_trend = np.zeros(len(df), dtype=int)
         in_pos = 0
         entry_price = None
         highest = None
@@ -177,15 +202,17 @@ class RegimeAdaptiveHybrid:
                 in_pos = 0; entry_price = None; highest = None
             else:
                 if in_pos == 0:
-                    if long_break.iloc[i]:
+                    ubreak = (hh.iloc[i] * (1.0 + self.don_break_pad)) if not np.isnan(hh.iloc[i]) else np.nan
+                    if (not np.isnan(ubreak)) and (c > ubreak):
                         in_pos = 1; entry_price = c; highest = c
                 else:
                     highest = c if highest is None else max(highest, c)
-                    # Trailing/Regel-Stop (konservativ: Donchian-Exit, Entry-ATR, Chandelier)
+                    # Donchian-Exit (optional gepaddet) + ATR-basierte Stops
+                    don_exit_lvl = (ll.iloc[i] * (1.0 + self.don_exit_pad)) if not np.isnan(ll.iloc[i]) else -np.inf
                     stop = max(
-                        ll.iloc[i],                          # Donchian-Exit (aus Exit-Fenster)
-                        entry_price - self.atr_mult*atr.iloc[i],
-                        highest     - self.atr_mult*atr.iloc[i]
+                        don_exit_lvl,
+                        entry_price - self.atr_mult * atr.iloc[i],
+                        highest     - self.atr_mult * atr.iloc[i]
                     )
                     if c < stop:
                         in_pos = 0; entry_price = None; highest = None
@@ -194,14 +221,15 @@ class RegimeAdaptiveHybrid:
         pos_trend = pd.Series(pos_trend, index=df.index, dtype=int)
         pos_trend[~is_trend] = 0  # außerhalb Trend-Regime flat
 
-        # ----- Range-Block (RSI + Bollinger z, long-only) -----
+        # ----- Range-Block (RSI + Bollinger, long-only) -----
         rsi = self._rsi_ewm(close, n=self.rsi_n)
         bb_mid = close.rolling(self.bb_win, min_periods=self.bb_win).mean()
         bb_std = close.rolling(self.bb_win, min_periods=self.bb_win).std()
         z_bb = (close - bb_mid) / (bb_std + 1e-12)
 
-        enter = (rsi < self.rsi_buy) & (z_bb < -1.0)
-        exit_ = (rsi > self.rsi_exit) | (z_bb > 0.0)
+        # Entry/Exit-Regeln (wie zuvor): z<=-1 & RSI<buy, Exit bei z>=0 oder RSI>exit, plus Time-Exit
+        enter = is_range & range_guard & (z_bb <= -1.0) & (rsi < self.rsi_buy) & (~z_bb.isna()) & (~rsi.isna())
+        exit_  = (z_bb >= 0.0) | (rsi > self.rsi_exit)
 
         pos_range = np.zeros(len(df), dtype=int)
         in_pos = 0; bars_in = 0
@@ -215,24 +243,18 @@ class RegimeAdaptiveHybrid:
                     in_pos = 0; bars_in = 0
                 bars_in = bars_in + 1 if in_pos else 0
             pos_range[i] = in_pos
-
         pos_range = pd.Series(pos_range, index=df.index, dtype=int)
 
         # ----- Kombination (ohne Doppelhebelung) -----
-        raw_pos = pd.concat([pos_trend, pos_range], axis=1).max(axis=1)  # 0/1
-        raw_pos = raw_pos.fillna(0).astype(int)
+        raw_pos = pd.concat([pos_trend, pos_range], axis=1).max(axis=1).fillna(0).astype(int)
 
         # ----- Warmup: sobald Kern-Features fehlen → flat -----
-        warmup = (
-            sma.isna() | bb_mid.isna() | atr.isna()
-            | (close.shift(1).rolling(self.don_entry, min_periods=self.don_entry).max().isna())
-            | (close.shift(1).rolling(self.don_exit,  min_periods=self.don_exit ).min().isna())
-        )
+        warmup = (sma_tr.isna() | bb_mid.isna() | atr.isna() | hh.isna() | ll.isna())
 
-        # ----- finaler Output: strikt binär 0/1, long-only -----
+        # ----- finaler Output (binär 0/1, long-only) -----
         expo = (raw_pos > 0).astype(int).astype(float)
         expo[warmup] = 0.0
-        expo.name = "regime_adaptive_hybrid_long_only_binary"
+        expo.name = "regime_adaptive_hybrid"
         return expo
 
     # ========= Helper =========
@@ -244,13 +266,6 @@ class RegimeAdaptiveHybrid:
             raise ValueError(f"DataFrame fehlt Spalten: {missing}")
         if not isinstance(df.index, (pd.DatetimeIndex, pd.PeriodIndex)):
             raise ValueError("Index muss DatetimeIndex/PeriodIndex sein (UTC empfohlen).")
-
-    @staticmethod
-    def _donchian_bounds(close: pd.Series, n_high: int, n_low: int) -> tuple[pd.Series, pd.Series]:
-        assert n_high > 1 and 0 < n_low <= n_high
-        hh = close.shift(1).rolling(n_high, min_periods=n_high).max()
-        ll = close.shift(1).rolling(n_low,  min_periods=n_low ).min()
-        return hh, ll
 
     @staticmethod
     def _atr_wilder(df: pd.DataFrame, n: int = 14) -> pd.Series:
@@ -276,7 +291,6 @@ class RegimeAdaptiveHybrid:
     @staticmethod
     def _realized_vol(close: pd.Series, win: int = 30) -> pd.Series:
         ret = np.log(close).diff()
-        # Bars/Jahr heuristisch aus Index-Frequenz
         bpy = RegimeAdaptiveHybrid._bars_per_year_from_index(close.index)
         return ret.rolling(win).std() * np.sqrt(bpy)
 

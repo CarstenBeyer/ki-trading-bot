@@ -49,13 +49,13 @@ if __name__ == "__main__":
 
 
     strategy = RegimeAdaptiveHybrid(
-        trend_win=50, slope_enter=0.002, slope_exit=-0.002,
-        z_enter=0.3, z_exit=-0.1,
-        vol_win=30, max_ann_vol=1.2,
-        don_entry=720, don_exit=180,
+        trend_win=100, slope_enter=0.0, slope_exit=-0.0002,
+        z_enter=0.6, z_exit=-0.0, range_guard_z_min=-1.5, 
+        vol_win=90, max_ann_vol=2.5,
+        don_entry=96, don_exit=24,
         atr_n=30, atr_mult=2.0,
         rsi_n=9, rsi_buy=30, rsi_exit=80,
-        bb_win=48, time_exit=288,
+        bb_win=48, time_exit=288, bb_enter_z=-1.0, bb_exit_z=0.25,
         allow_shorts=False, binary_output=True, use_vol_targeting=False
     )
 
@@ -79,13 +79,12 @@ if __name__ == "__main__":
     plot_price_equity_dual_axis(
         df, equity, sig,
         stats=stats,
-        title=f"{symbol} {timeframe} — BB + RSI",
-        strategy=strategy,      # keeps RSI/BB params in sync with your strategy
-        interactive_cursor=True,
-        show_exposure=True,     # exposure strip (executed signal)
+        title=f"{symbol} {timeframe} — BB+RSI+Trend",
+        strategy=strategy,          # pulls all thresholds/windows from your strategy
         show_bbands=True,
+        show_exposure=True,
+        show_trend_diag=True,
         show_rsi=True,
-        show_vcursor=True
     )
         
     
