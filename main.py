@@ -10,11 +10,14 @@ from trades import build_trade_report
 if __name__ == "__main__":
     # Daten holen
     symbol = "XRP/USDT"
-    timeframe = "5m"
-    limit = 5000
+    timeframe = "1d"
+    limit = 365  
 
     df = fetch_ohlcv(symbol, timeframe, limit)
     print(df)
+    
+    print(df.index.min(), "→", df.index.max(), "rows:", len(df))
+
 
     # Strategie-Signal
     sig = sma_signal(df, fast=20, slow=50)
