@@ -10,7 +10,7 @@ from trades import build_trade_report
 if __name__ == "__main__":
     # Daten holen
     symbol = "XRP/USDT"
-    timeframe = "1m"
+    timeframe = "5m"
     limit = 5000
 
     df = fetch_ohlcv(symbol, timeframe, limit)
@@ -49,13 +49,13 @@ if __name__ == "__main__":
 
 
     strategy = RegimeAdaptiveHybrid(
-        trend_win=1000, slope_enter=0.001, slope_exit=-0.002,
+        trend_win=50, slope_enter=0.002, slope_exit=-0.002,
         z_enter=0.3, z_exit=-0.1,
         vol_win=30, max_ann_vol=1.2,
         don_entry=720, don_exit=180,
         atr_n=30, atr_mult=2.0,
-        rsi_n=20, rsi_buy=25, rsi_exit=55,
-        bb_win=20, time_exit=1440,
+        rsi_n=9, rsi_buy=30, rsi_exit=80,
+        bb_win=48, time_exit=288,
         allow_shorts=False, binary_output=True, use_vol_targeting=False
     )
 
@@ -78,8 +78,14 @@ if __name__ == "__main__":
     # Plotten
     plot_price_equity_dual_axis(
         df, equity, sig,
-        stats=stats,  # <<<< hier Stats übergeben
-        title=f"{symbol} {timeframe} — Stats"
-    )    
+        stats=stats,
+        title=f"{symbol} {timeframe} — BB + RSI",
+        strategy=strategy,      # keeps RSI/BB params in sync with your strategy
+        interactive_cursor=True,
+        show_exposure=True,     # exposure strip (executed signal)
+        show_bbands=True,
+        show_rsi=True,
+        show_vcursor=True
+    )
         
     
