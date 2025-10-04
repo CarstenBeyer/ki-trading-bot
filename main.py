@@ -10,10 +10,12 @@ from trades import build_trade_report
 if __name__ == "__main__":
     # Daten holen
     symbol = "XRP/USDT"
-    timeframe = "1d"
-    limit = 365  
+    timeframe = "6h"
+    limit = 2*4*365  
 
-    df = fetch_ohlcv(symbol, timeframe, limit)
+   
+    df = fetch_ohlcv(symbol, timeframe, limit, ensure_latest=True, fill_gaps=True, break_lines_at_gaps=True)
+
     print(df)
     
     print(df.index.min(), "→", df.index.max(), "rows:", len(df))
@@ -52,8 +54,8 @@ if __name__ == "__main__":
 
 
     strategy = RegimeAdaptiveHybrid(
-        trend_win=100, slope_enter=0.0002, slope_exit=-0.0004,
-        z_enter=0.6, z_exit=-0.0, range_guard_z_min=-0.5, 
+        trend_win=5*6, slope_enter=0.0002, slope_exit=-0.0004,
+        z_enter=0.6, z_exit=-0.0, range_guard_z_min=-0.25, 
         vol_win=90, max_ann_vol=1.25,
         don_entry=96, don_exit=48,
         atr_n=60, atr_mult=3.5,
