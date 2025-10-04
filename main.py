@@ -10,8 +10,8 @@ from trades import build_trade_report
 if __name__ == "__main__":
     # Daten holen
     symbol = "XRP/USDT"
-    timeframe = "6h"
-    limit = 2*4*365  
+    timeframe = "1h"
+    limit = 24*365/2  # ca. 6 Monate Stundenkerzen  
 
    
     df = fetch_ohlcv(symbol, timeframe, limit, ensure_latest=True, fill_gaps=True, break_lines_at_gaps=True)
@@ -22,9 +22,6 @@ if __name__ == "__main__":
 
 
     # Strategie-Signal
-    sig = sma_signal(df, fast=20, slow=50)
-    sig = donchian_breakout_signal(df, entry_n=20, exit_n=10)
-    sig = rsi_meanrev_signal(df, n=14, buy_thr=30, exit_thr=50)
     #sig = trend_breakout_signal(df, entry_n=20, exit_n=10, atr_n=14, atr_mult=3.0)
 
     # strategy = RegimeAdaptiveHybrid(
@@ -53,15 +50,27 @@ if __name__ == "__main__":
     # )
 
 
+    # strategy = RegimeAdaptiveHybrid(
+    #     trend_win=5*6, slope_enter=0.0002, slope_exit=-0.0004,
+    #     z_enter=0.6, z_exit=-0.0, range_guard_z_min=-0.25, 
+    #     vol_win=90, max_ann_vol=1.25,
+    #     don_entry=96, don_exit=48,
+    #     atr_n=60, atr_mult=3.5,
+    #     rsi_n=14, rsi_buy=30, rsi_exit=80,
+    #     bb_win=48, time_exit=500,
+    #     allow_shorts=False, binary_output=True, use_vol_targeting=False
+    # )
+
+    # === Simplified strategy params ===
     strategy = RegimeAdaptiveHybrid(
-        trend_win=5*6, slope_enter=0.0002, slope_exit=-0.0004,
-        z_enter=0.6, z_exit=-0.0, range_guard_z_min=-0.25, 
-        vol_win=90, max_ann_vol=1.25,
-        don_entry=96, don_exit=48,
-        atr_n=60, atr_mult=3.5,
-        rsi_n=14, rsi_buy=30, rsi_exit=80,
-        bb_win=48, time_exit=500,
-        allow_shorts=False, binary_output=True, use_vol_targeting=False
+        # regime
+        trend_win=30, slope_enter=0.001, slope_exit=-0.0008,
+        z_enter=0.6,  z_exit=-0.2,
+        # range (RSI + BB + time)
+        rsi_n=14, rsi_buy=30, rsi_exit=70,
+        bb_win=40, bb_k=2, bb_enter_z=-2, bb_exit_z=0.0,
+        
+        time_exit=100,
     )
 
     sig = strategy.generate(df)
@@ -84,15 +93,18 @@ if __name__ == "__main__":
     plot_price_equity_dual_axis(
         df, equity, sig,
         stats=stats,
-        title=f"{symbol} {timeframe} — BB/RSI + Trend + Donchian",
-        strategy=strategy,           # keeps params in sync
-        show_exposure=True,
-        show_trend_diag=True,
-        show_don_panel=True,         # new panel (replaces the old vol panel)
-        show_rsi=True,
-        # optional:
-        mark_don_breakouts=True,
-        mark_don_exits=True,
+        title=f"{symbol} {timeframe} — BB+RSI + Trend (entries only)",
+        strategy=strategy,            # keeps plot indicators in sync
+        show_bbands=True,             # price panel shows BB bands
+        show_exposure=True,           # exposure (executed signal)
+        show_trend_diag=True,         # slope & z-score panel
+        show_rsi=True,                # RSI panel
+        show_entry_reason_lines=True, # 2px vertical lines for entry reasons
+        # Optional cosmetics for price axis:
+        price_pad_frac=0.10,
+        price_quantiles=(0.01, 0.99),
+        nice_bounds=True,
+        # savefig="chart.png",        # save instead of (or in addition to) showing
     )
-        
+            
     
